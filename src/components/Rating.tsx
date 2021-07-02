@@ -23,6 +23,7 @@ interface RatingProps {
   readOnly: boolean;
   classPrefix: string;
   disabled?: boolean;
+  allowClear?: boolean;
   classnames: ClassNamesFn;
 }
 
@@ -31,6 +32,7 @@ export class Rating extends React.Component<RatingProps, any> {
     containerClass: 'rating',
     readOnly: false,
     half: true,
+    allowClear: true,
     value: 0,
     count: 5,
     char: '★',
@@ -43,6 +45,7 @@ export class Rating extends React.Component<RatingProps, any> {
     this.state = {
       value: props.value || 0,
       stars: [],
+      isClear: false,
       halfStar: {
         at: Math.floor(props.value),
         hidden: props.half && props.value % 1 < 0.5
@@ -64,15 +67,19 @@ export class Rating extends React.Component<RatingProps, any> {
     });
   }
 
-  componentWillReceiveProps(props: RatingProps) {
-    this.setState({
-      stars: this.getStars(props.value),
-      value: props.value,
-      halfStar: {
-        at: Math.floor(props.value),
-        hidden: props.half && props.value % 1 < 0.5
-      }
-    });
+  componentDidUpdate(prevProps: RatingProps) {
+    const props = this.props;
+
+    if (props.value !== prevProps.value) {
+      this.setState({
+        stars: this.getStars(props.value),
+        value: props.value,
+        halfStar: {
+          at: Math.floor(props.value),
+          hidden: props.half && props.value % 1 < 0.5
+        }
+      });
+    }
   }
 
   getRate() {
@@ -102,6 +109,8 @@ export class Rating extends React.Component<RatingProps, any> {
   }
 
   mouseOver(event: React.ChangeEvent<any>) {
+    const {isClear} = this.state;
+    if (isClear) return;
     let {readOnly, size, half} = this.props;
     if (readOnly) return;
     let index = Number(event.target.getAttribute('data-index'));
@@ -130,9 +139,10 @@ export class Rating extends React.Component<RatingProps, any> {
   }
 
   mouseLeave() {
-    let {value} = this.state;
+    const {value, isClear} = this.state;
     const {half, readOnly} = this.props;
     if (readOnly) return;
+    if (isClear) return this.setState({isClear: false});
     if (half) {
       this.setState({
         halfStar: {
@@ -147,9 +157,10 @@ export class Rating extends React.Component<RatingProps, any> {
   }
 
   handleClick(event: React.ChangeEvent<any>) {
-    const {half, readOnly, onChange, size} = this.props;
+    const {half, readOnly, onChange, size, allowClear} = this.props;
     if (readOnly) return;
     let index = Number(event.target.getAttribute('data-index'));
+
     let value;
     if (half) {
       const isAtHalf = this.moreThanHalf(event, size);
@@ -164,9 +175,13 @@ export class Rating extends React.Component<RatingProps, any> {
     } else {
       value = index = index + 1;
     }
+
+    const isClear = allowClear && value === this.state.value;
+    if (isClear) value = index = 0;
     this.setState({
-      value: value,
-      stars: this.getStars(index)
+      value,
+      stars: this.getStars(index),
+      isClear
     });
     onChange && onChange(value);
   }

@@ -7,7 +7,8 @@ import {
   autobind,
   isDisabled,
   isObject,
-  createObject
+  createObject,
+  getVariable
 } from '../utils/helper';
 import findIndex from 'lodash/findIndex';
 import {Tabs as CTabs, Tab} from '../components/Tabs';
@@ -152,14 +153,18 @@ export default class Tabs extends React.Component<TabsProps, TabsState> {
     let activeKey: any = 0;
 
     if (typeof props.activeKey !== 'undefined') {
-      activeKey =
-        typeof props.activeKey === 'string'
-          ? tokenize(props.activeKey, props.data)
-          : props.activeKey;
+      activeKey = props.activeKey;
     } else if (location && Array.isArray(tabs)) {
       const hash = location.hash.substring(1);
       const tab: TabSchema = find(tabs, tab => tab.hash === hash) as TabSchema;
-      activeKey = tab && tab.hash ? tab.hash : (tabs[0] && tabs[0].hash) || 0;
+
+      if (tab) {
+        activeKey = tab.hash;
+      } else if (props.defaultActiveKey) {
+        activeKey = tokenize(props.defaultActiveKey, props.data);
+      }
+
+      activeKey = activeKey || (tabs[0] && tabs[0].hash) || 0;
     }
 
     this.state = {
@@ -170,6 +175,31 @@ export default class Tabs extends React.Component<TabsProps, TabsState> {
 
   componentDidMount() {
     this.autoJumpToNeighbour(this.activeKey);
+
+    let {name, value, onChange, source, tabs, data} = this.props;
+
+    // 如果没有配置 name ，说明不需要同步表单值
+    if (
+      !name ||
+      typeof onChange !== 'function' ||
+      // 如果关联某个变量数据，则不启用
+      source
+    ) {
+      return;
+    }
+
+    value = value ?? getVariable(data, name);
+
+    //  如果有值，切到对应的 tab
+    if (value && Array.isArray(tabs)) {
+      const key = this.resolveKeyByValue(value);
+      key !== undefined && this.handleSelect(key);
+    } else {
+      const tab = this.resolveTabByKey(this.activeKey);
+      if (tab && value !== ((tab as any).value ?? tab.title)) {
+        onChange((tab as any).value ?? tab.title, name);
+      }
+    }
   }
 
   componentDidUpdate(preProps: TabsProps, prevState: any) {
@@ -219,6 +249,62 @@ export default class Tabs extends React.Component<TabsProps, TabsState> {
     }
 
     this.autoJumpToNeighbour(this.activeKey);
+
+    let {name, value, onChange, source, data} = this.props;
+
+    // 如果没有配置 name ，说明不需要同步表单值
+    if (
+      !name ||
+      typeof onChange !== 'function' ||
+      // 如果关联某个变量数据，则不启用
+      source
+    ) {
+      return;
+    }
+
+    let key: any;
+    value = value ?? getVariable(data, name);
+    const prevValue =
+      preProps.value ?? getVariable(preProps.data, preProps.name);
+    if (
+      value !== prevValue &&
+      (key = this.resolveKeyByValue(value)) !== undefined &&
+      key !== this.activeKey
+    ) {
+      this.handleSelect(key);
+    } else if (this.activeKey !== prevState.activeKey) {
+      const tab = this.resolveTabByKey(this.activeKey);
+      if (tab && value !== ((tab as any).value ?? tab.title)) {
+        onChange((tab as any).value ?? tab.title, name);
+      }
+    }
+  }
+
+  resolveTabByKey(key: any) {
+    const tabs = this.props.tabs;
+
+    if (!Array.isArray(tabs)) {
+      return;
+    }
+
+    return find(tabs, (tab: TabSchema, index) =>
+      tab.hash ? tab.hash === key : index === key
+    );
+  }
+
+  resolveKeyByValue(value: any) {
+    const tabs = this.props.tabs;
+
+    if (!Array.isArray(tabs)) {
+      return;
+    }
+
+    const tab: TabSchema = find(
+      tabs,
+      tab => ((tab as any).value ?? tab.title) === value
+    ) as TabSchema;
+
+    return tab && tab.hash ? tab.hash : tabs.indexOf(tab);
   }
 
   @autobind
@@ -314,13 +400,20 @@ export default class Tabs extends React.Component<TabsProps, TabsState> {
       data,
       mode: dMode,
       tabsMode,
-      mountOnEnter,
       unmountOnExit,
-      source
+      source,
+      formStore
     } = this.props;
 
     const mode = tabsMode || dMode;
     const arr = resolveVariable(source, data);
+    let mountOnEnter = this.props.mountOnEnter;
+
+    // 如果在form下面，其他tabs默认需要渲染出来
+    // 否则在其他 tab 下面的必填项检测不到
+    if (formStore) {
+      mountOnEnter = false;
+    }
 
     let tabs = this.props.tabs;
     if (!tabs) {
@@ -417,7 +510,6 @@ export default class Tabs extends React.Component<TabsProps, TabsState> {
 }
 
 @Renderer({
-  test: /(^|\/)tabs$/,
-  name: 'tabs'
+  type: 'tabs'
 })
 export class TabsRenderer extends Tabs {}

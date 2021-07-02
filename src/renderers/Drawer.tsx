@@ -4,7 +4,12 @@ import {Renderer, RendererProps} from '../factory';
 import {SchemaNode, Schema, Action} from '../types';
 import {default as DrawerContainer} from '../components/Drawer';
 import findLast from 'lodash/findLast';
-import {guid, isVisible, autobind} from '../utils/helper';
+import {
+  guid,
+  isVisible,
+  autobind,
+  isObjectShallowModified
+} from '../utils/helper';
 import {reaction} from 'mobx';
 import {findDOMNode} from 'react-dom';
 import {IModalStore, ModalStore} from '../store/modal';
@@ -131,6 +136,7 @@ export default class Drawer extends React.Component<DrawerProps> {
     'title',
     'size',
     'closeOnEsc',
+    'closeOnOutside',
     'children',
     'bodyClassName',
     'confirm',
@@ -152,6 +158,7 @@ export default class Drawer extends React.Component<DrawerProps> {
     resizable: false,
     overlay: true,
     closeOnEsc: false,
+    closeOnOutside: false,
     showErrorMsg: true
   };
 
@@ -177,10 +184,8 @@ export default class Drawer extends React.Component<DrawerProps> {
     this.handleFormInit = this.handleFormInit.bind(this);
     this.handleFormChange = this.handleFormChange.bind(this);
     this.handleFormSaved = this.handleFormSaved.bind(this);
-  }
 
-  componentWillMount() {
-    const store = this.props.store;
+    const store = props.store;
     this.reaction = reaction(
       () => `${store.loading}${store.error}`,
       () => this.forceUpdate()
@@ -325,8 +330,14 @@ export default class Drawer extends React.Component<DrawerProps> {
     store.setFormData(data);
   }
 
-  handleFormChange(data: any) {
+  handleFormChange(data: any, name?: string) {
     const {store} = this.props;
+
+    if (typeof name === 'string') {
+      data = {
+        [name]: data
+      };
+    }
 
     store.setFormData(data);
   }
@@ -639,21 +650,22 @@ export default class Drawer extends React.Component<DrawerProps> {
 }
 
 @Renderer({
-  test: /(^|\/)drawer$/,
+  type: 'drawer',
   storeType: ModalStore.name,
   storeExtendsData: false,
-  name: 'drawer',
   isolateScope: true,
-  shouldSyncSuperStore: (store: IServiceStore, props: any) =>
-    store.drawerOpen || props.show
+  shouldSyncSuperStore: (store: IServiceStore, props: any, prevProps: any) =>
+    (store.drawerOpen || props.show) &&
+    isObjectShallowModified(prevProps.data, props.data)
 })
 export class DrawerRenderer extends Drawer {
   static contextType = ScopedContext;
 
-  componentWillMount() {
-    const scoped = this.context as IScopedContext;
+  constructor(props: DrawerProps, context: IScopedContext) {
+    super(props);
+    const scoped = context;
+
     scoped.registerComponent(this);
-    super.componentWillMount();
   }
 
   componentWillUnmount() {
@@ -692,17 +704,17 @@ export class DrawerRenderer extends Drawer {
         components.push(...page.context.getComponents());
       }
 
-      const form = findLast(
-        components,
-        component => component.props.type === 'form'
-      );
-      form && targets.push(form);
+      for (let i = components.length - 1; i >= 0; i--) {
+        const component = components[i];
 
-      const crud = findLast(
-        components,
-        component => component.props.type === 'crud'
-      );
-      crud && targets.push(crud);
+        if (component.props.type === 'form') {
+          targets.push(component);
+          break;
+        } else if (component.props.type === 'crud') {
+          targets.push(component);
+          break;
+        }
+      }
     }
 
     if (targets.length) {

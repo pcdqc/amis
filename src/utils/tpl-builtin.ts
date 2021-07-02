@@ -164,7 +164,7 @@ export const filterDate = (
 };
 
 export function parseDuration(str: string): moment.Duration | undefined {
-  const matches = /^((?:\-|\+)?(?:\d*\.)?\d+)(minute|min|hour|day|week|month|year|weekday|second|millisecond)s?$/.exec(
+  const matches = /^((?:\-|\+)?(?:\d*\.)?\d+)(minute|min|hour|day|week|month|quarter|year|weekday|second|millisecond)s?$/.exec(
     str
   );
 
@@ -182,6 +182,10 @@ export function parseDuration(str: string): moment.Duration | undefined {
 export const filters: {
   [propName: string]: (input: any, ...args: any[]) => any;
 } = {
+  map: (input: Array<unknown>, fn: string, ...arg: any) =>
+    Array.isArray(input) && filters[fn]
+      ? input.map(item => filters[fn](item, ...arg))
+      : input,
   html: (input: string) => escapeHtml(input),
   json: (input, tabSize: number | string = 2) =>
     tabSize
@@ -641,6 +645,15 @@ function parseJson(str: string, defaultValue?: any) {
   }
 }
 
+function getCookie(name: string) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) {
+    return parts.pop()!.split(';').shift();
+  }
+  return undefined;
+}
+
 export const resolveVariable = (path?: string, data: any = {}): any => {
   if (!path || !data || typeof path !== 'string') {
     return undefined;
@@ -672,6 +685,9 @@ export const resolveVariable = (path?: string, data: any = {}): any => {
     }
 
     return undefined;
+  } else if (ns === 'cookie') {
+    const key = varname.replace(/^{|}$/g, '').trim();
+    return getCookie(key);
   }
 
   if (varname === '$$') {
@@ -825,7 +841,7 @@ export function resolveMapping(
 
 export function dataMapping(
   to: any,
-  from: PlainObject,
+  from: PlainObject = {},
   ignoreFunction: boolean | ((key: string, value: any) => boolean) = false
 ): any {
   if (Array.isArray(to)) {

@@ -233,7 +233,11 @@ export const Row = types
         let index = 0;
         const len = self.children.length;
         while (pool.length) {
-          const item = pool.shift()!;
+          // 因为父级id未更新，所以需要将子级的parentId正确指向父级id
+          const item = {
+            ...pool.shift(),
+            parentId: self.id
+          }!;
 
           if (index < len) {
             self.children[index].replaceWith(item);
@@ -278,6 +282,7 @@ export const TableStore = iRendererStore
     itemDraggableOn: '',
     hideCheckToggler: false,
     combineNum: 0,
+    combineFromIndex: 0,
     formsRef: types.optional(types.array(types.frozen()), []),
     maxKeepItemSelectionLength: 0,
     keepItemSelectionOnPageChange: false
@@ -419,6 +424,10 @@ export const TableStore = iRendererStore
         selectedItems: self.selectedRows.map(item => item.data),
         unSelectedItems: getUnSelectedRows().map(item => item.data)
       });
+    }
+
+    function hasColumnHidden() {
+      return self.columns.findIndex(column => !column.toggled) !== -1;
     }
 
     function getColumnGroup(): Array<{
@@ -592,6 +601,11 @@ export const TableStore = iRendererStore
           .map(item => item.store);
       },
 
+      // 是否隐藏了某列
+      hasColumnHidden() {
+        return hasColumnHidden();
+      },
+
       getExpandedRows() {
         const list: Array<IRow> = [];
 
@@ -634,6 +648,9 @@ export const TableStore = iRendererStore
 
       config.combineNum !== void 0 &&
         (self.combineNum = parseInt(config.combineNum as any, 10) || 0);
+      config.combineFromIndex !== void 0 &&
+        (self.combineFromIndex =
+          parseInt(config.combineFromIndex as any, 10) || 0);
 
       config.maxKeepItemSelectionLength !== void 0 &&
         (self.maxKeepItemSelectionLength = config.maxKeepItemSelectionLength);
@@ -723,14 +740,22 @@ export const TableStore = iRendererStore
     function autoCombineCell(
       arr: Array<SRow>,
       columns: Array<IColumn>,
-      maxCount: number
+      maxCount: number,
+      fromIndex = 0
     ): Array<SRow> {
       if (!columns.length || !maxCount || !arr.length) {
         return arr;
       }
+      // 如果是嵌套模式，通常第一列都是存在差异的，所以从第二列开始。
+      fromIndex =
+        fromIndex ||
+        (arr.some(item => Array.isArray(item.children) && item.children.length)
+          ? 1
+          : 0);
 
       const keys: Array<string> = [];
-      for (let i = 0; i < maxCount; i++) {
+      const len = columns.length;
+      for (let i = 0; i < len; i++) {
         const column = columns[i];
 
         // maxCount 可能比实际配置的 columns 还有多。
@@ -748,6 +773,14 @@ export const TableStore = iRendererStore
           break;
         }
         keys.push(key);
+      }
+
+      while (fromIndex--) {
+        keys.shift();
+      }
+
+      while (keys.length > maxCount) {
+        keys.pop();
       }
 
       return combineCell(arr, keys);
@@ -831,7 +864,12 @@ export const TableStore = iRendererStore
       });
 
       if (self.combineNum) {
-        arr = autoCombineCell(arr, self.columns, self.combineNum);
+        arr = autoCombineCell(
+          arr,
+          self.columns,
+          self.combineNum,
+          self.combineFromIndex
+        );
       }
 
       replaceRow(arr);

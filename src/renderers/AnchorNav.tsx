@@ -195,7 +195,6 @@ export default class AnchorNav extends React.Component<
 }
 
 @Renderer({
-  test: /(^|\/)anchor-nav$/,
-  name: 'anchor-nav'
+  type: 'anchor-nav'
 })
 export class AnchorNavRenderer extends AnchorNav {}
